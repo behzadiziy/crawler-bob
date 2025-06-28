@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-A complete web crawler script that scrapes a product category page.
+A dynamic web crawler that scrapes a product category page.
 
 Features:
+- The category URL is a REQUIRED command-line argument.
 - Loads configuration from a .env file, including a CRAWL_LIMIT.
-- Fetches all product links from a category page using the correct selector.
-- Tracks previously scraped URLs in a 'scraped_urls.log' file to avoid duplicates.
+- Tracks previously scraped URLs to avoid duplicates.
 - Scrapes a limited number of new products per run.
-- For each product, it extracts details, attributes, and images.
-- Sends the structured JSON data for each product to a specified API endpoint.
+- Sends data for each product to a specified API endpoint.
 """
 import os
 import json
 import re
 import time
 import requests
+import argparse # Used to handle command-line arguments
 from urllib.parse import urljoin, unquote
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 load_dotenv()
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
-DATA_SOURCE_URL = os.getenv("DATA_SOURCE_URL") # This is the CATEGORY URL
+# NOTE: DATA_SOURCE_URL is no longer read from the .env file.
 IMAGE_SAVE_DIR = 'downloaded_images'
 LOG_FILE = 'scraped_urls.log'
 CRAWL_LIMIT = int(os.getenv("CRAWL_LIMIT", 5))
@@ -31,7 +31,7 @@ CRAWL_LIMIT = int(os.getenv("CRAWL_LIMIT", 5))
 if not os.path.exists(IMAGE_SAVE_DIR):
     os.makedirs(IMAGE_SAVE_DIR)
 
-# --- 2. Helper Functions ---
+# --- 2. Helper Functions (No changes in this section) ---
 
 def load_scraped_urls(log_file_path):
     if not os.path.exists(log_file_path): return set()
@@ -144,27 +144,36 @@ def send_product_to_api(product_data):
         if hasattr(e, 'response') and e.response: print(f"      API Response Body: {e.response.text}")
         return False
 
-# --- 3. Main Execution Block ---
+# --- 3. Main Execution Block (The updated logic is here) ---
 
 def main():
     """Main function to orchestrate the category crawler."""
-    print("--- 🚀 Starting Category Crawler ---")
-    if not DATA_SOURCE_URL:
-        print("❌ Critical Error: DATA_SOURCE_URL (for the category page) is not set in .env. Exiting.")
-        return
+    
+    # --- ** NEW: Set up command-line argument parsing ** ---
+    # The URL is now a mandatory positional argument.
+    parser = argparse.ArgumentParser(
+        description="Scrape a product category page for new products.",
+        epilog="Example: python crawler.py \"https://websitename.com/product-category/sunglasses/\""
+    )
+    parser.add_argument('url', help="The FULL URL of the product category page to scrape.")
+    args = parser.parse_args()
 
+    # The script will automatically exit with an error if the 'url' argument is not provided.
+    category_url = args.url
+
+    print("--- 🚀 Starting Category Crawler ---")
+    print(f"🎯 Target URL: {category_url}")
+    
     scraped_urls = load_scraped_urls(LOG_FILE)
     print(f"🔎 Found {len(scraped_urls)} previously scraped URLs in '{LOG_FILE}'.")
 
     try:
-        print(f"➡️  Fetching category page: {DATA_SOURCE_URL}")
+        print(f"➡️  Fetching category page...")
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(DATA_SOURCE_URL, headers=headers, timeout=30)
+        response = requests.get(category_url, headers=headers, timeout=30)
         response.raise_for_status()
         category_soup = BeautifulSoup(response.text, 'html.parser')
         
-        # --- ** THE CORRECTED SELECTOR IS HERE ** ---
-        # This selector specifically targets the links within the product titles.
         product_links = category_soup.select('h3.wd-entities-title a')
         all_urls_on_page = {a['href'] for a in product_links}
         
