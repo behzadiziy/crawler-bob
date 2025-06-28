@@ -6,6 +6,7 @@ Features:
 - Loads configuration from a .env file.
 - Handles lazy-loaded images by checking multiple attributes.
 - Parses the 'Additional Information' table into a dictionary.
+- Extracts the full, detailed product description from the main content tab.
 - Downloads the primary product image to a local folder.
 - Prints all scraped data to the console in a clean format.
 - Sends the structured JSON data to a specified API endpoint.
@@ -61,10 +62,10 @@ def extract_product_data_from_soup(soup, url):
             'sku': '', 'name': '', 'description': '', 'price': 0.00,
             'status': 'PendingReview', 'images': [], 'attributes': {},
             'category': '', 'source_url': url, 'brand': '', 'stock_quantity': 0,
-            'crawler_payload': {} # You can add metadata here if needed
+            'crawler_payload': {}
         }
 
-        # --- Extract Name, Price, and Description ---
+        # --- Extract Name and Price ---
         name_selector = soup.select_one('h1.product_title')
         if name_selector: product_data['name'] = name_selector.get_text(strip=True)
 
@@ -73,8 +74,19 @@ def extract_product_data_from_soup(soup, url):
             price_match = re.search(r'[\d,]+\.?\d*', price_selector.get_text(strip=True).replace(',', ''))
             if price_match: product_data['price'] = float(price_match.group())
 
-        desc_selector = soup.select_one('.woocommerce-product-details__short-description')
-        if desc_selector: product_data['description'] = desc_selector.get_text(strip=True)
+        # --- **UPDATED** Extract Description ---
+        # Prioritize the full description from the main tab.
+        desc_selectors = [
+            '#tab-description .wc-tab-inner', # The full description container
+            '.woocommerce-product-details__short-description', # Fallback to short description
+            '.product-short-description' # Another fallback
+        ]
+        for selector in desc_selectors:
+            desc_element = soup.select_one(selector)
+            if desc_element:
+                # Get all the text from the container
+                product_data['description'] = desc_element.get_text(separator='\n', strip=True)
+                break
         
         # --- Extract Product Attributes from Table ---
         attributes = {}
@@ -87,7 +99,6 @@ def extract_product_data_from_soup(soup, url):
                     key = label_tag.get_text(strip=True)
                     value = value_tag.get_text(strip=True)
                     attributes[key] = value
-                    # If we find a "Brand" attribute, also populate the main brand field
                     if key == 'برند' and not product_data.get('brand'):
                         product_data['brand'] = value
         product_data['attributes'] = attributes
@@ -100,7 +111,7 @@ def extract_product_data_from_soup(soup, url):
             img_url = None
             for attr in image_attribute_priority:
                 if elem.has_attr(attr) and elem[attr]:
-                    img_url = urljoin(url, elem[attr]) # Make URL absolute
+                    img_url = urljoin(url, elem[attr])
                     break
             if img_url and img_url not in found_image_urls:
                 found_image_urls.append(img_url)
@@ -110,7 +121,7 @@ def extract_product_data_from_soup(soup, url):
         sku_selector = soup.select_one('.sku')
         if sku_selector and sku_selector.get_text(strip=True).lower() != 'n/a':
             product_data['sku'] = sku_selector.get_text(strip=True)
-        else: # Generate SKU from URL if not found
+        else:
             slug = unquote(url.rstrip('/').split('/')[-1])
             product_data['sku'] = re.sub(r'[\W_]+', '-', slug).strip('-')[:50]
 
@@ -176,31 +187,25 @@ def main():
     """Main function to orchestrate the crawler's execution."""
     print("--- 🚀 Starting Product Crawler ---")
     if not DATA_SOURCE_URL:
-        print("❌ Critical Error: DATA_SOURCE_URL is not set in .env. Exiting.")
+        print("❌ Critical Error: DATA_SOURCE_URL is not set in .env file. Exiting.")
         return
 
-    # Step 1: Fetch and parse all data from the URL
     product = fetch_product_data(DATA_SOURCE_URL)
     
     if product:
-        # --- ** NEW SECTION: PRINT ALL FOUND DATA ** ---
-        # This section will print the entire product dictionary to the console
-        # in a readable, pretty-printed JSON format.
         print("\n" + "="*50)
         print("--- 📜 Full Extracted Product Data (for console review) ---")
         print("="*50)
-        # ensure_ascii=False is crucial for correctly printing non-English characters
         print(json.dumps(product, indent=2, ensure_ascii=False))
         print("="*50 + "\n")
 
-        # Step 2: Send the data to the API (if configured)
         if API_URL and API_KEY:
             send_product_to_api(product)
         else:
             print("🔔 Skipping API submission: API_URL or API_KEY not found in .env file.")
 
     else:
-        print("\n--- 🛑 Halting script: Failed to extract any product data. ---")
+        print("\n--- 🛑 Halting script: Failed to extract product data. ---")
 
     print("\n--- ✅ Crawler script finished. ---")
 
