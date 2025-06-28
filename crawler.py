@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-A dynamic web crawler that scrapes a product category page.
+An interactive web crawler that scrapes a product category page.
 
 Features:
-- The category URL is a REQUIRED command-line argument.
-- Loads configuration from a .env file, including a CRAWL_LIMIT.
+- Interactively prompts the user for the category URL and the number of products to scrape.
+- Provides user-friendly validation for all inputs.
+- Loads API configuration from a .env file.
 - Tracks previously scraped URLs to avoid duplicates.
-- Scrapes a limited number of new products per run.
+- Scrapes a limited number of new products per run based on user input.
 - Sends data for each product to a specified API endpoint.
 """
 import os
@@ -14,7 +15,6 @@ import json
 import re
 import time
 import requests
-import argparse # Used to handle command-line arguments
 from urllib.parse import urljoin, unquote
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -23,10 +23,9 @@ from dotenv import load_dotenv
 load_dotenv()
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
-# NOTE: DATA_SOURCE_URL is no longer read from the .env file.
 IMAGE_SAVE_DIR = 'downloaded_images'
 LOG_FILE = 'scraped_urls.log'
-CRAWL_LIMIT = int(os.getenv("CRAWL_LIMIT", 5))
+# NOTE: CRAWL_LIMIT and DATA_SOURCE_URL are now gathered interactively.
 
 if not os.path.exists(IMAGE_SAVE_DIR):
     os.makedirs(IMAGE_SAVE_DIR)
@@ -144,25 +143,35 @@ def send_product_to_api(product_data):
         if hasattr(e, 'response') and e.response: print(f"      API Response Body: {e.response.text}")
         return False
 
-# --- 3. Main Execution Block (The updated logic is here) ---
+# --- 3. Main Execution Block (The new interactive logic is here) ---
 
 def main():
-    """Main function to orchestrate the category crawler."""
+    """Main function to orchestrate the interactive category crawler."""
+    print("--- 🚀 Interactive Category Crawler ---")
     
-    # --- ** NEW: Set up command-line argument parsing ** ---
-    # The URL is now a mandatory positional argument.
-    parser = argparse.ArgumentParser(
-        description="Scrape a product category page for new products.",
-        epilog="Example: python crawler.py \"https://websitename.com/product-category/sunglasses/\""
-    )
-    parser.add_argument('url', help="The FULL URL of the product category page to scrape.")
-    args = parser.parse_args()
+    # --- ** NEW: Prompt for the Category URL ** ---
+    while True:
+        category_url = input("Please enter the URL of the product category page to scrape:\n> ")
+        if category_url.strip(): # Check if the input is not empty
+            break
+        print("❌ URL cannot be empty. Please try again.")
+    
+    # --- ** NEW: Prompt for the Crawl Limit ** ---
+    while True:
+        try:
+            limit_str = input(f"How many new products should be scraped from this category? (Enter a number):\n> ")
+            crawl_limit = int(limit_str)
+            if crawl_limit > 0:
+                break
+            else:
+                print("❌ Please enter a number greater than zero.")
+        except ValueError:
+            print("❌ Invalid input. Please enter a valid number.")
 
-    # The script will automatically exit with an error if the 'url' argument is not provided.
-    category_url = args.url
-
-    print("--- 🚀 Starting Category Crawler ---")
+    print("\n" + "="*50)
     print(f"🎯 Target URL: {category_url}")
+    print(f"⚙️  Crawl limit set to: {crawl_limit}")
+    print("="*50 + "\n")
     
     scraped_urls = load_scraped_urls(LOG_FILE)
     print(f"🔎 Found {len(scraped_urls)} previously scraped URLs in '{LOG_FILE}'.")
@@ -186,11 +195,11 @@ def main():
 
     products_scraped_this_run = 0
     for product_url in new_urls_to_crawl:
-        if products_scraped_this_run >= CRAWL_LIMIT:
-            print(f"\n--- 🏁 Crawl limit of {CRAWL_LIMIT} reached for this run. ---")
+        if products_scraped_this_run >= crawl_limit:
+            print(f"\n--- 🏁 Crawl limit of {crawl_limit} reached for this run. ---")
             break
 
-        print(f"\n--- Scraping new product ({products_scraped_this_run + 1}/{CRAWL_LIMIT}) ---")
+        print(f"\n--- Scraping new product ({products_scraped_this_run + 1}/{crawl_limit}) ---")
         product_data = fetch_product_data(product_url)
         
         if product_data:
