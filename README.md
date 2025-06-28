@@ -37,10 +37,9 @@ Follow these steps to get the crawler running on your local machine.
 **1. Clone the Repository**
 
 ```bash
-git clone https://github.com/your-username/crawler-bob.git
+git clone https://github.com/behzadiziy/crawler-bob.git
 cd crawler-bob
 ```
-*(Replace `your-username` with your actual GitHub username.)*
 
 **2. Create a Virtual Environment (Recommended)**
 
